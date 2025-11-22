@@ -1,0 +1,43 @@
+name: Test Develop
+
+on:
+  push:
+    branches:
+      - develop
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          uv sync --extra dev
+          uv pip install -e .
+
+      - name: Install AWS CDK CLI
+        run: npm install -g aws-cdk
+
+      - name: Run pytest
+        run: uv run pytest
+
+      - name: Run CDK synth (integration test)
+        run: cdk synth
+
+      - name: Run linters
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run basedpyright

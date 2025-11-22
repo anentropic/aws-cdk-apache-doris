@@ -1,9 +1,7 @@
 name: Publish to PyPI
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:  # Requires manual trigger from GitHub Actions UI
 
 jobs:
   test:
@@ -45,7 +43,7 @@ jobs:
   publish:
     needs: test
     runs-on: ubuntu-latest
-    environment: pypi  # Requires manual approval in GitHub settings
+    environment: pypi  # Additional protection layer via environment approval (if configured)
     permissions:
       id-token: write  # Required for trusted publishing
     

@@ -71,7 +71,7 @@ This repository follows a git flow branching strategy:
 
 - **feature branches**: Create from `develop`, PR to `develop`
 - **develop branch**: Integration branch for features, runs tests on merge
-- **main branch**: Production branch, publishes releases to PyPI on merge
+- **main branch**: Production branch, publishing to PyPI requires manual workflow trigger
 
 ### CI/CD
 
@@ -79,7 +79,7 @@ GitHub Actions workflows:
 
 - **Pull Requests**: Tests run on all PRs to `develop` or `main`
 - **Develop Branch**: Tests run on merge to `develop`
-- **Main Branch**: Tests run and package is published to PyPI on merge to `main`
+- **Main Branch**: Package can be published to PyPI by manually triggering the "Publish to PyPI" workflow from the Actions tab
 
 ## License
 

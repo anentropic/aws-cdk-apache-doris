@@ -1,0 +1,741 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Deploy Doris-BE on Amazon Web Services'
+Metadata:
+  LICENSE: Apache License Version 2.0
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+    - Label:
+        default: Network configuration
+      Parameters:
+      - PrivateSubnetID
+      - DorisServerSecurityGroup
+    - Label:
+        default: EC2 configuration
+      Parameters:
+      - KeyPairName
+    - Label:
+        default: Environment configuration
+      Parameters:
+      - LatestAmiId
+      - JDKDownLoadURL
+      - DorisDownLoadURL
+    - Label:
+        default: Node type configuration
+      Parameters:
+      - BeNodeInstanceType
+      - BeNodeCount
+    - Label:
+        default: BE configuration
+      Parameters:
+      - SysLogDir
+      - SysLogLevel
+      - VolumeType
+      - VolumeSize
+      - Iops
+    ParameterLabels:
+      PrivateSubnetID:
+        default: Private subnet ID
+      DorisServerSecurityGroup:
+        default: Doris Server Security Group
+      KeyPairName:
+        default: Key pair name
+      LatestAmiId:
+        default: Reference the latest Amazon Linux AMI in a CloudFormation template
+      JDKDownLoadURL:
+        default: URL of download JDK 1.8
+      DorisDownLoadURL:
+        default: URL of Doris
+      BeNodeInstanceType:
+        default: Be instance type
+      BeNodeCount:
+        default: Be node count
+      SysLogDir:
+        default: Dir to save be sys log
+      SysLogLevel:
+        default: Sys Log Level
+      VolumeType:
+        default: Volume type of Be nodes
+      VolumeSize:
+        default: Volume size of Be nodes
+      Iops:
+        default: IOPS of Be nodes
+Parameters: 
+  PrivateSubnetID: 
+    Description: The Private Subnet ID that you want to deploy Fe nodes.
+    Type: String
+  DorisServerSecurityGroup: 
+    Description: Doris Server Security Group.
+    Type: String
+  KeyPairName: 
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Public/private key pairs allow you to securely connect to your instance after it launches.
+  LatestAmiId:
+    Description: Reference the latest Amazon Linux AMI in a CloudFormation template.
+    Type: String
+  JDKDownLoadURL:
+    Description: URL of download JDK 1.8
+    Type: String
+  DorisDownLoadURL:
+    Description: URL of Doris
+    Type: String
+  BeNodeInstanceType: 
+    Description: Amazon EC2 instance type for the be nodes.
+    Type: String
+    AllowedValues:
+      - t3.large
+      - t3.xlarge
+      - t3.2xlarge
+      - m5.large
+      - m5.xlarge
+      - m5.2xlarge
+      - m5.4xlarge
+      - m6i.large
+      - m6i.xlarge
+      - m6i.2xlarge
+      - m6i.4xlarge
+      - r5.large
+      - r5.xlarge
+      - r5.2xlarge
+      - r5.4xlarge
+      - r5.8xlarge
+      - r6i.large
+      - r6i.xlarge
+      - r6i.2xlarge
+      - r6i.4xlarge
+      - r6i.8xlarge
+  BeNodeCount:
+    Type: Number
+    Description: Number of Doris Be
+    AllowedValues:
+      - 1
+      - 2
+      - 3
+      - 4
+      - 5
+  SysLogDir:
+    Description: Dir to save be log, please to fill in the absolute path
+    Type: String
+  SysLogLevel:
+    Description: Sys Log Level, please select from the drop-down menu
+    Type: String
+    AllowedValues: 
+      - INFO
+      - WARN
+      - ERROR
+      - FATAL
+  VolumeType: 
+    Type: String
+    Description: EBS volume type (data) to be attached to node in GBs [gp2,gp3,st1], one volume for data storage is mounted automatically by CloudFormation stack.
+    Default: gp2
+    AllowedValues:
+      - gp2
+      - gp3
+      - st1
+      - io1
+  VolumeSize: 
+    Type: String
+    Description: EBS volume size (data) to be attached to node in GBs.
+    Default: 50
+  Iops: 
+    Type: String
+    Description: IOPS of EBS volume when io1 type is chosen. Otherwise ignored.
+    Default: 1000
+Conditions:
+  UseIops: 
+    Fn::Equals: [!Ref VolumeType,"io1"]
+  1NodesCondition: !Or 
+    - !Equals [!Ref 'BeNodeCount', '1']
+    - !Equals [!Ref 'BeNodeCount', '2']
+    - !Equals [!Ref 'BeNodeCount', '3']
+    - !Equals [!Ref 'BeNodeCount', '4']
+    - !Equals [!Ref 'BeNodeCount', '5']
+  2NodesCondition: !Or 
+    - !Equals [!Ref 'BeNodeCount', '2']
+    - !Equals [!Ref 'BeNodeCount', '3']
+    - !Equals [!Ref 'BeNodeCount', '4']
+    - !Equals [!Ref 'BeNodeCount', '5']
+  3NodesCondition: !Or 
+    - !Equals [!Ref 'BeNodeCount', '3']
+    - !Equals [!Ref 'BeNodeCount', '4']
+    - !Equals [!Ref 'BeNodeCount', '5']
+  4NodesCondition: !Or  
+    - !Equals [!Ref 'BeNodeCount', '4']
+    - !Equals [!Ref 'BeNodeCount', '5']
+  5NodesCondition: !Equals [!Ref 'BeNodeCount', '5']
+Resources:
+  BeInstance1:
+    Condition: 1NodesCondition
+    Type: AWS::EC2::Instance
+    Metadata:
+      Comment: Install be instance replica 1
+    Properties:
+      KeyName: !Ref KeyPairName
+      ImageId: !Ref LatestAmiId
+      InstanceType: !Ref BeNodeInstanceType
+      SubnetId: !Ref PrivateSubnetID
+      SecurityGroupIds:
+      - !Ref DorisServerSecurityGroup
+      BlockDeviceMappings:
+      - DeviceName: /dev/xvdh
+        Ebs:
+          VolumeSize: !Ref VolumeSize
+          VolumeType: !Ref VolumeType
+          Iops: !If [UseIops,!Ref Iops,!Ref AWS::NoValue]
+          DeleteOnTermination: true
+      - DeviceName: /dev/xvdt
+        Ebs:
+          VolumeSize: 50
+          VolumeType: !Ref VolumeType
+          Iops: !If [UseIops,!Ref Iops,!Ref AWS::NoValue]
+          DeleteOnTermination: true
+      UserData:
+        Fn::Base64:
+          !Sub |
+          #!/bin/bash -xe
+          # /opt/aws/bin/cfn-init -v --stack '${AWS::StackName}' --resource BeInstance1 --region ${AWS::Region}
+
+          # update vm.map
+          echo "vm.max_map_count=2000000" >> /etc/sysctl.conf
+          echo "vm.overcommit_memory=1" >> /etc/sysctl.conf
+          echo "fs.file-max=30000000" >> /etc/sysctl.conf
+          echo "fs.nr_open=20000000" >> /etc/sysctl.conf
+          echo "net.ipv4.tcp_keepalive_time=180" >> /etc/sysctl.conf
+          sysctl -p
+
+          # close transparent huge page
+          if test -f /sys/kernel/mm/transparent_hugepage/enabled; then
+              echo never > /sys/kernel/mm/transparent_hugepage/enabled
+          fi
+          if test -f /sys/kernel/mm/transparent_hugepage/defrag; then
+              echo never > /sys/kernel/mm/transparent_hugepage/defrag
+          fi
+
+          # close thp permanently
+          echo "echo never > /sys/kernel/mm/transparent_hugepage/enabled" >> /etc/rc.local
+          echo "echo never > /sys/kernel/mm/transparent_hugepage/defrag" >> /etc/rc.local
+
+          # sync to disk
+          sync 
+
+          echo "Modify kernel params done." 
+          
+          wget ${JDKDownLoadURL} -O java.tar.gz
+          mkdir ./jdk && tar -zxvf java.tar.gz -C ./jdk --strip-components 1
+          mkdir /usr/java && mv jdk /usr/java
+          echo 'export JAVA_HOME=/usr/java/jdk' >> /etc/profile
+          echo 'export JRE_HOME=/usr/java/jdk/jre' >> /etc/profile
+          echo 'export CLASSPATH=.:/usr/java/jdk/lib:/usr/java/jdk/jre/lib:$CLASSPATH' >> /etc/profile
+          echo 'export JAVA_PATH=/usr/java/jdk/bin:/usr/java/jdk/jre/bin' >> /etc/profile
+          echo 'export PATH=$PATH:/usr/java/jdk/bin:/usr/java/jdk/jre/bin' >> /etc/profile
+          source /etc/profile
+          rm -rf java.tar.gz
+
+          yum install MySQL-python.x86_64 -y
+          yum install mysql -y
+
+          sudo adduser Doris
+          sudo usermod -G Doris Doris
+
+          sudo mkfs.xfs /dev/xvdt
+          sudo mount /dev/xvdt /home/Doris
+          cd /home/Doris
+
+          wget ${DorisDownLoadURL} -O Doris.tar.gz
+          mkdir ./Doris && tar -zxvf Doris.tar.gz -C ./Doris --strip-components 1
+          rm -rf Doris.tar.gz
+
+          sudo mkfs.xfs /dev/xvdh
+          sudo mkdir -p /home/data
+          sudo mount /dev/xvdh /home/data
+
+          cd /home/Doris/Doris/be
+          echo "storage_root_path = /home/data" >> conf/be.conf
+          echo 'JAVA_HOME=/usr/java/jdk' >> conf/be.conf
+          touch params.sh
+          chmod +x params.sh
+          echo '#!/bin/bash' >> params.sh
+          echo 'if [ $1 != "beDefaultLogPath" ];then' >> params.sh
+          echo '    mkdir -p $1' >> params.sh
+          echo '    sed -i "/^# sys_log_dir/ c\sys_log_dir = $1" conf/be.conf' >> params.sh
+          echo 'fi' >> params.sh
+          echo 'sed -i "/^sys_log_level/ c\sys_log_level = $2" conf/be.conf' >> params.sh
+          bash params.sh ${SysLogDir} ${SysLogLevel}
+
+          chown -R Doris:Doris /home/Doris
+          ulimit -n 65536 
+
+          bin/start_be.sh --daemon
+
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackId} --resource BeInstance1 --region ${AWS::Region}
+    CreationPolicy:
+      ResourceSignal:
+        Count: 1
+        Timeout: "PT10M"
+  BeInstance2:
+    Condition: 2NodesCondition
+    Type: AWS::EC2::Instance
+    Metadata:
+      Comment: Install be instance replica 2
+    Properties:
+      KeyName: !Ref KeyPairName
+      ImageId: !Ref LatestAmiId
+      InstanceType: !Ref BeNodeInstanceType
+      SubnetId: !Ref PrivateSubnetID
+      SecurityGroupIds:
+      - !Ref DorisServerSecurityGroup
+      BlockDeviceMappings:
+      - DeviceName: /dev/xvdh
+        Ebs:
+          VolumeSize: !Ref VolumeSize
+          VolumeType: !Ref VolumeType
+          Iops: !If [UseIops,!Ref Iops,!Ref AWS::NoValue]
+          DeleteOnTermination: true
+      - DeviceName: /dev/xvdt
+        Ebs:
+          VolumeSize: 50
+          VolumeType: !Ref VolumeType
+          Iops: !If [UseIops,!Ref Iops,!Ref AWS::NoValue]
+          DeleteOnTermination: true
+      UserData:
+        Fn::Base64:
+          !Sub |
+          #!/bin/bash -xe
+          # /opt/aws/bin/cfn-init -v --stack '${AWS::StackName}' --resource BeInstance2 --region ${AWS::Region}
+          
+          # update vm.map
+          echo "vm.max_map_count=2000000" >> /etc/sysctl.conf
+          echo "vm.overcommit_memory=1" >> /etc/sysctl.conf
+          echo "fs.file-max=30000000" >> /etc/sysctl.conf
+          echo "fs.nr_open=20000000" >> /etc/sysctl.conf
+          echo "net.ipv4.tcp_keepalive_time=180" >> /etc/sysctl.conf
+          sysctl -p
+
+          # close transparent huge page
+          if test -f /sys/kernel/mm/transparent_hugepage/enabled; then
+              echo never > /sys/kernel/mm/transparent_hugepage/enabled
+          fi
+          if test -f /sys/kernel/mm/transparent_hugepage/defrag; then
+              echo never > /sys/kernel/mm/transparent_hugepage/defrag
+          fi
+
+          # close thp permanently
+          echo "echo never > /sys/kernel/mm/transparent_hugepage/enabled" >> /etc/rc.local
+          echo "echo never > /sys/kernel/mm/transparent_hugepage/defrag" >> /etc/rc.local
+
+          # sync to disk
+          sync 
+
+          echo "Modify kernel params done." 
+          
+          wget ${JDKDownLoadURL} -O java.tar.gz
+          mkdir ./jdk && tar -zxvf java.tar.gz -C ./jdk --strip-components 1
+          mkdir /usr/java && mv jdk /usr/java
+          echo 'export JAVA_HOME=/usr/java/jdk' >> /etc/profile
+          echo 'export JRE_HOME=/usr/java/jdk/jre' >> /etc/profile
+          echo 'export CLASSPATH=.:/usr/java/jdk/lib:/usr/java/jdk/jre/lib:$CLASSPATH' >> /etc/profile
+          echo 'export JAVA_PATH=/usr/java/jdk/bin:/usr/java/jdk/jre/bin' >> /etc/profile
+          echo 'export PATH=$PATH:/usr/java/jdk/bin:/usr/java/jdk/jre/bin' >> /etc/profile
+          source /etc/profile
+          rm -rf java.tar.gz
+
+          yum install MySQL-python.x86_64 -y
+          yum install mysql -y
+
+          sudo adduser Doris
+          sudo usermod -G Doris Doris
+
+          sudo mkfs.xfs /dev/xvdt
+          sudo mount /dev/xvdt /home/Doris
+          cd /home/Doris
+
+          wget ${DorisDownLoadURL} -O Doris.tar.gz
+          mkdir ./Doris && tar -zxvf Doris.tar.gz -C ./Doris --strip-components 1
+          rm -rf Doris.tar.gz
+
+          sudo mkfs.xfs /dev/xvdh
+          sudo mkdir -p /home/data
+          sudo mount /dev/xvdh /home/data
+
+          cd /home/Doris/Doris/be
+          echo "storage_root_path = /home/data" >> conf/be.conf
+          echo 'JAVA_HOME=/usr/java/jdk' >> conf/be.conf
+          touch params.sh
+          chmod +x params.sh
+          echo '#!/bin/bash' >> params.sh
+          echo 'if [ $1 != "beDefaultLogPath" ];then' >> params.sh
+          echo '    mkdir -p $1' >> params.sh
+          echo '    sed -i "/^# sys_log_dir/ c\sys_log_dir = $1" conf/be.conf' >> params.sh
+          echo 'fi' >> params.sh
+          echo 'sed -i "/^sys_log_level/ c\sys_log_level = $2" conf/be.conf' >> params.sh
+          bash params.sh ${SysLogDir} ${SysLogLevel}
+
+          chown -R Doris:Doris /home/Doris
+          ulimit -n 65536 
+
+          bin/start_be.sh --daemon
+
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackId} --resource BeInstance2 --region ${AWS::Region}
+    CreationPolicy:
+      ResourceSignal:
+        Count: 1
+        Timeout: "PT10M"
+  BeInstance3:
+    Condition: 3NodesCondition
+    Type: AWS::EC2::Instance
+    Metadata:
+      Comment: Install be instance replica 3
+    Properties:
+      KeyName: !Ref KeyPairName
+      ImageId: !Ref LatestAmiId
+      InstanceType: !Ref BeNodeInstanceType
+      SubnetId: !Ref PrivateSubnetID
+      SecurityGroupIds:
+      - !Ref DorisServerSecurityGroup
+      BlockDeviceMappings:
+      - DeviceName: /dev/xvdh
+        Ebs:
+          VolumeSize: !Ref VolumeSize
+          VolumeType: !Ref VolumeType
+          Iops: !If [UseIops,!Ref Iops,!Ref AWS::NoValue]
+          DeleteOnTermination: true
+      - DeviceName: /dev/xvdt
+        Ebs:
+          VolumeSize: 50
+          VolumeType: !Ref VolumeType
+          Iops: !If [UseIops,!Ref Iops,!Ref AWS::NoValue]
+          DeleteOnTermination: true
+      UserData:
+        Fn::Base64:
+          !Sub |
+          #!/bin/bash -xe
+          # /opt/aws/bin/cfn-init -v --stack '${AWS::StackName}' --resource BeInstance3 --region ${AWS::Region}
+
+          # update vm.map
+          echo "vm.max_map_count=2000000" >> /etc/sysctl.conf
+          echo "vm.overcommit_memory=1" >> /etc/sysctl.conf
+          echo "fs.file-max=30000000" >> /etc/sysctl.conf
+          echo "fs.nr_open=20000000" >> /etc/sysctl.conf
+          echo "net.ipv4.tcp_keepalive_time=180" >> /etc/sysctl.conf
+          sysctl -p
+
+          # close transparent huge page
+          if test -f /sys/kernel/mm/transparent_hugepage/enabled; then
+              echo never > /sys/kernel/mm/transparent_hugepage/enabled
+          fi
+          if test -f /sys/kernel/mm/transparent_hugepage/defrag; then
+              echo never > /sys/kernel/mm/transparent_hugepage/defrag
+          fi
+
+          # close thp permanently
+          echo "echo never > /sys/kernel/mm/transparent_hugepage/enabled" >> /etc/rc.local
+          echo "echo never > /sys/kernel/mm/transparent_hugepage/defrag" >> /etc/rc.local
+
+          # sync to disk
+          sync 
+
+          echo "Modify kernel params done." 
+          
+          wget ${JDKDownLoadURL} -O java.tar.gz
+          mkdir ./jdk && tar -zxvf java.tar.gz -C ./jdk --strip-components 1
+          mkdir /usr/java && mv jdk /usr/java
+          echo 'export JAVA_HOME=/usr/java/jdk' >> /etc/profile
+          echo 'export JRE_HOME=/usr/java/jdk/jre' >> /etc/profile
+          echo 'export CLASSPATH=.:/usr/java/jdk/lib:/usr/java/jdk/jre/lib:$CLASSPATH' >> /etc/profile
+          echo 'export JAVA_PATH=/usr/java/jdk/bin:/usr/java/jdk/jre/bin' >> /etc/profile
+          echo 'export PATH=$PATH:/usr/java/jdk/bin:/usr/java/jdk/jre/bin' >> /etc/profile
+          source /etc/profile
+          rm -rf java.tar.gz
+
+          yum install MySQL-python.x86_64 -y
+          yum install mysql -y
+
+          sudo adduser Doris
+          sudo usermod -G Doris Doris
+
+          sudo mkfs.xfs /dev/xvdt
+          sudo mount /dev/xvdt /home/Doris
+          cd /home/Doris
+
+          wget ${DorisDownLoadURL} -O Doris.tar.gz
+          mkdir ./Doris && tar -zxvf Doris.tar.gz -C ./Doris --strip-components 1
+          rm -rf Doris.tar.gz
+
+          sudo mkfs.xfs /dev/xvdh
+          sudo mkdir -p /home/data
+          sudo mount /dev/xvdh /home/data
+
+          cd /home/Doris/Doris/be
+          echo "storage_root_path = /home/data" >> conf/be.conf
+          echo 'JAVA_HOME=/usr/java/jdk' >> conf/be.conf
+          touch params.sh
+          chmod +x params.sh
+          echo '#!/bin/bash' >> params.sh
+          echo 'if [ $1 != "beDefaultLogPath" ];then' >> params.sh
+          echo '    mkdir -p $1' >> params.sh
+          echo '    sed -i "/^# sys_log_dir/ c\sys_log_dir = $1" conf/be.conf' >> params.sh
+          echo 'fi' >> params.sh
+          echo 'sed -i "/^sys_log_level/ c\sys_log_level = $2" conf/be.conf' >> params.sh
+          bash params.sh ${SysLogDir} ${SysLogLevel}
+
+          chown -R Doris:Doris /home/Doris
+          ulimit -n 65536 
+
+          bin/start_be.sh --daemon
+
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackId} --resource BeInstance3 --region ${AWS::Region}
+    CreationPolicy:
+      ResourceSignal:
+        Count: 1
+        Timeout: "PT10M"
+  BeInstance4:
+    Condition: 4NodesCondition
+    Type: AWS::EC2::Instance
+    Metadata:
+      Comment: Install be instance replica 4
+    Properties:
+      KeyName: !Ref KeyPairName
+      ImageId: !Ref LatestAmiId
+      InstanceType: !Ref BeNodeInstanceType
+      SubnetId: !Ref PrivateSubnetID
+      SecurityGroupIds:
+      - !Ref DorisServerSecurityGroup
+      BlockDeviceMappings:
+      - DeviceName: /dev/xvdh
+        Ebs:
+          VolumeSize: !Ref VolumeSize
+          VolumeType: !Ref VolumeType
+          Iops: !If [UseIops,!Ref Iops,!Ref AWS::NoValue]
+          DeleteOnTermination: true
+      - DeviceName: /dev/xvdt
+        Ebs:
+          VolumeSize: 50
+          VolumeType: !Ref VolumeType
+          Iops: !If [UseIops,!Ref Iops,!Ref AWS::NoValue]
+          DeleteOnTermination: true
+      UserData:
+        Fn::Base64:
+          !Sub |
+          #!/bin/bash -xe
+          # /opt/aws/bin/cfn-init -v --stack '${AWS::StackName}' --resource BeInstance4 --region ${AWS::Region}
+
+          # update vm.map
+          echo "vm.max_map_count=2000000" >> /etc/sysctl.conf
+          echo "vm.overcommit_memory=1" >> /etc/sysctl.conf
+          echo "fs.file-max=30000000" >> /etc/sysctl.conf
+          echo "fs.nr_open=20000000" >> /etc/sysctl.conf
+          echo "net.ipv4.tcp_keepalive_time=180" >> /etc/sysctl.conf
+          sysctl -p
+
+          # close transparent huge page
+          if test -f /sys/kernel/mm/transparent_hugepage/enabled; then
+              echo never > /sys/kernel/mm/transparent_hugepage/enabled
+          fi
+          if test -f /sys/kernel/mm/transparent_hugepage/defrag; then
+              echo never > /sys/kernel/mm/transparent_hugepage/defrag
+          fi
+
+          # close thp permanently
+          echo "echo never > /sys/kernel/mm/transparent_hugepage/enabled" >> /etc/rc.local
+          echo "echo never > /sys/kernel/mm/transparent_hugepage/defrag" >> /etc/rc.local
+
+          # sync to disk
+          sync 
+
+          echo "Modify kernel params done." 
+          
+          wget ${JDKDownLoadURL} -O java.tar.gz
+          mkdir ./jdk && tar -zxvf java.tar.gz -C ./jdk --strip-components 1
+          mkdir /usr/java && mv jdk /usr/java
+          echo 'export JAVA_HOME=/usr/java/jdk' >> /etc/profile
+          echo 'export JRE_HOME=/usr/java/jdk/jre' >> /etc/profile
+          echo 'export CLASSPATH=.:/usr/java/jdk/lib:/usr/java/jdk/jre/lib:$CLASSPATH' >> /etc/profile
+          echo 'export JAVA_PATH=/usr/java/jdk/bin:/usr/java/jdk/jre/bin' >> /etc/profile
+          echo 'export PATH=$PATH:/usr/java/jdk/bin:/usr/java/jdk/jre/bin' >> /etc/profile
+          source /etc/profile
+          rm -rf java.tar.gz
+
+          yum install MySQL-python.x86_64 -y
+          yum install mysql -y
+
+          sudo adduser Doris
+          sudo usermod -G Doris Doris
+
+          sudo mkfs.xfs /dev/xvdt
+          sudo mount /dev/xvdt /home/Doris
+          cd /home/Doris
+
+          wget ${DorisDownLoadURL} -O Doris.tar.gz
+          mkdir ./Doris && tar -zxvf Doris.tar.gz -C ./Doris --strip-components 1
+          rm -rf Doris.tar.gz
+
+          sudo mkfs.xfs /dev/xvdh
+          sudo mkdir -p /home/data
+          sudo mount /dev/xvdh /home/data
+
+          cd /home/Doris/Doris/be
+          echo "storage_root_path = /home/data" >> conf/be.conf
+          echo 'JAVA_HOME=/usr/java/jdk' >> conf/be.conf
+          touch params.sh
+          chmod +x params.sh
+          echo '#!/bin/bash' >> params.sh
+          echo 'if [ $1 != "beDefaultLogPath" ];then' >> params.sh
+          echo '    mkdir -p $1' >> params.sh
+          echo '    sed -i "/^# sys_log_dir/ c\sys_log_dir = $1" conf/be.conf' >> params.sh
+          echo 'fi' >> params.sh
+          echo 'sed -i "/^sys_log_level/ c\sys_log_level = $2" conf/be.conf' >> params.sh
+          bash params.sh ${SysLogDir} ${SysLogLevel}
+
+          chown -R Doris:Doris /home/Doris
+          ulimit -n 65536 
+
+          bin/start_be.sh --daemon
+
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackId} --resource BeInstance4 --region ${AWS::Region}
+    CreationPolicy:
+      ResourceSignal:
+        Count: 1
+        Timeout: "PT10M"
+  BeInstance5:
+    Condition: 5NodesCondition
+    Type: AWS::EC2::Instance
+    Metadata:
+      Comment: Install be instance replica 5
+    Properties:
+      KeyName: !Ref KeyPairName
+      ImageId: !Ref LatestAmiId
+      InstanceType: !Ref BeNodeInstanceType
+      SubnetId: !Ref PrivateSubnetID
+      SecurityGroupIds:
+      - !Ref DorisServerSecurityGroup
+      BlockDeviceMappings:
+      - DeviceName: /dev/xvdh
+        Ebs:
+          VolumeSize: !Ref VolumeSize
+          VolumeType: !Ref VolumeType
+          Iops: !If [UseIops,!Ref Iops,!Ref AWS::NoValue]
+          DeleteOnTermination: true
+      - DeviceName: /dev/xvdt
+        Ebs:
+          VolumeSize: 50
+          VolumeType: !Ref VolumeType
+          Iops: !If [UseIops,!Ref Iops,!Ref AWS::NoValue]
+          DeleteOnTermination: true
+      UserData:
+        Fn::Base64:
+          !Sub |
+          #!/bin/bash -xe
+          # /opt/aws/bin/cfn-init -v --stack '${AWS::StackName}' --resource BeInstance5 --region ${AWS::Region}
+
+          # update vm.map
+          echo "vm.max_map_count=2000000" >> /etc/sysctl.conf
+          echo "vm.overcommit_memory=1" >> /etc/sysctl.conf
+          echo "fs.file-max=30000000" >> /etc/sysctl.conf
+          echo "fs.nr_open=20000000" >> /etc/sysctl.conf
+          echo "net.ipv4.tcp_keepalive_time=180" >> /etc/sysctl.conf
+          sysctl -p
+
+          # close transparent huge page
+          if test -f /sys/kernel/mm/transparent_hugepage/enabled; then
+              echo never > /sys/kernel/mm/transparent_hugepage/enabled
+          fi
+          if test -f /sys/kernel/mm/transparent_hugepage/defrag; then
+              echo never > /sys/kernel/mm/transparent_hugepage/defrag
+          fi
+
+          # close thp permanently
+          echo "echo never > /sys/kernel/mm/transparent_hugepage/enabled" >> /etc/rc.local
+          echo "echo never > /sys/kernel/mm/transparent_hugepage/defrag" >> /etc/rc.local
+
+          # sync to disk
+          sync 
+
+          echo "Modify kernel params done." 
+          
+          wget ${JDKDownLoadURL} -O java.tar.gz
+          mkdir ./jdk && tar -zxvf java.tar.gz -C ./jdk --strip-components 1
+          mkdir /usr/java && mv jdk /usr/java
+          echo 'export JAVA_HOME=/usr/java/jdk' >> /etc/profile
+          echo 'export JRE_HOME=/usr/java/jdk/jre' >> /etc/profile
+          echo 'export CLASSPATH=.:/usr/java/jdk/lib:/usr/java/jdk/jre/lib:$CLASSPATH' >> /etc/profile
+          echo 'export JAVA_PATH=/usr/java/jdk/bin:/usr/java/jdk/jre/bin' >> /etc/profile
+          echo 'export PATH=$PATH:/usr/java/jdk/bin:/usr/java/jdk/jre/bin' >> /etc/profile
+          source /etc/profile
+          rm -rf java.tar.gz
+
+          yum install MySQL-python.x86_64 -y
+          yum install mysql -y
+
+          sudo adduser Doris
+          sudo usermod -G Doris Doris
+
+          sudo mkfs.xfs /dev/xvdt
+          sudo mount /dev/xvdt /home/Doris
+          cd /home/Doris
+
+          wget ${DorisDownLoadURL} -O Doris.tar.gz
+          mkdir ./Doris && tar -zxvf Doris.tar.gz -C ./Doris --strip-components 1
+          rm -rf Doris.tar.gz
+
+          sudo mkfs.xfs /dev/xvdh
+          sudo mkdir -p /home/data
+          sudo mount /dev/xvdh /home/data
+
+          cd /home/Doris/Doris/be
+          echo "storage_root_path = /home/data" >> conf/be.conf
+          echo 'JAVA_HOME=/usr/java/jdk' >> conf/be.conf
+          touch params.sh
+          chmod +x params.sh
+          echo '#!/bin/bash' >> params.sh
+          echo 'if [ $1 != "beDefaultLogPath" ];then' >> params.sh
+          echo '    mkdir -p $1' >> params.sh
+          echo '    sed -i "/^# sys_log_dir/ c\sys_log_dir = $1" conf/be.conf' >> params.sh
+          echo 'fi' >> params.sh
+          echo 'sed -i "/^sys_log_level/ c\sys_log_level = $2" conf/be.conf' >> params.sh
+          bash params.sh ${SysLogDir} ${SysLogLevel}
+
+          chown -R Doris:Doris /home/Doris
+          ulimit -n 65536 
+
+          bin/start_be.sh --daemon
+
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackId} --resource BeInstance5 --region ${AWS::Region}
+    CreationPolicy:
+      ResourceSignal:
+        Count: 1
+        Timeout: "PT10M"
+Outputs:
+  BeInstance1:
+    Condition: 1NodesCondition
+    Description: be instance 1
+    Value: !Ref BeInstance1
+  BeInstancePrivateIp1:
+    Condition: 1NodesCondition
+    Value: !GetAtt BeInstance1.PrivateIp
+  BeInstance2:
+    Condition: 2NodesCondition
+    Description: be instance 2
+    Value: !Ref BeInstance2
+  BeInstancePrivateIp2:
+    Condition: 2NodesCondition
+    Value: !GetAtt BeInstance2.PrivateIp
+  BeInstance3:
+    Condition: 3NodesCondition
+    Description: be instance 3
+    Value: !Ref BeInstance3
+  BeInstancePrivateIp3:
+    Condition: 3NodesCondition
+    Value: !GetAtt BeInstance3.PrivateIp
+  BeInstance4:
+    Condition: 4NodesCondition
+    Description: be instance 4
+    Value: !Ref BeInstance4
+  BeInstancePrivateIp4:
+    Condition: 4NodesCondition
+    Value: !GetAtt BeInstance4.PrivateIp
+  BeInstance5:
+    Condition: 5NodesCondition
+    Description: be instance 5
+    Value: !Ref BeInstance5
+  BeInstancePrivateIp5:
+    Condition: 5NodesCondition
+    Value: !GetAtt BeInstance5.PrivateIp

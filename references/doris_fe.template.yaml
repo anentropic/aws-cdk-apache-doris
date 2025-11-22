@@ -1,0 +1,626 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Deploy Doris-FE on Amazon Web Services'
+Metadata:
+  LICENSE: Apache License Version 2.0
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+    - Label:
+        default: Network configuration
+      Parameters:
+      - PrivateSubnetID
+      - DorisServerSecurityGroup
+    - Label:
+        default: EC2 configuration
+      Parameters:
+      - KeyPairName
+    - Label:
+        default: Environment configuration
+      Parameters:
+      - LatestAmiId
+      - JDKDownLoadURL
+      - DorisDownLoadURL
+    - Label:
+        default: Node type configuration
+      Parameters:
+      - FeNodeInstanceType
+    - Label:
+        default: Fe configuration
+      Parameters:
+      - FeNodeCount
+      - LogDir
+      - SysLogLevel
+      - MetaDir
+      - VolumeType
+      - Iops
+      - BeInstancePrivateIp1
+      - BeInstancePrivateIp2
+      - BeInstancePrivateIp3
+      - BeInstancePrivateIp4
+      - BeInstancePrivateIp5
+    ParameterLabels:
+      PrivateSubnetID:
+        default: Private subnet ID
+      DorisServerSecurityGroup:
+        default: Doris Server Security Group
+      KeyPairName:
+        default: Key pair name
+      LatestAmiId:
+        default: Reference the latest Amazon Linux AMI in a CloudFormation template
+      JDKDownLoadURL:
+        default: URL of download JDK 1.8
+      DorisDownLoadURL:
+        default: URL of Doris
+      FeNodeInstanceType:
+        default: Fe instance type
+      FeNodeCount:
+        default: Fe Node Count
+      LogDir:
+        default: Dir to save fe log
+      SysLogLevel:
+        default: Sys Log Level
+      MetaDir:
+        default: Meta data dir
+      VolumeType:
+        default: Volume type of fe nodes
+      Iops:
+        default: IOPS of Be nodes
+      BeInstancePrivateIp1:
+        default: be ip 1
+      BeInstancePrivateIp2:
+        default: be ip 2
+      BeInstancePrivateIp3:
+        default: be ip 3
+      BeInstancePrivateIp4:
+        default: be ip 4
+      BeInstancePrivateIp5:
+        default: be ip 5
+Parameters: 
+  PrivateSubnetID: 
+    Description: The Private Subnet ID that you want to deploy Fe nodes.
+    Type: String
+  DorisServerSecurityGroup: 
+    Description: Doris Server Security Group.
+    Type: String
+  KeyPairName: 
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Public/private key pairs allow you to securely connect to your instance after it launches.
+  LatestAmiId:
+    Description: Reference the latest Amazon Linux AMI in a CloudFormation template.
+    Type: String
+  JDKDownLoadURL:
+    Description: URL of download JDK 1.8
+    Type: String
+  DorisDownLoadURL:
+    Description: URL of Doris
+    Type: String
+  FeNodeInstanceType: 
+    Description: Amazon EC2 instance type for the fe nodes.
+    Type: String
+    AllowedValues:
+      - t3.large
+      - t3.xlarge
+      - t3.2xlarge
+      - m5.large
+      - m5.xlarge
+      - m5.2xlarge
+      - m5.4xlarge
+      - m6i.large
+      - m6i.xlarge
+      - m6i.2xlarge
+      - m6i.4xlarge
+      - r5.large
+      - r5.xlarge
+      - r5.2xlarge
+      - r5.4xlarge
+      - r5.8xlarge
+      - r6i.large
+      - r6i.xlarge
+      - r6i.2xlarge
+      - r6i.4xlarge
+      - r6i.8xlarge
+  FeNodeCount:
+    Description: Fe Node Count
+    Type: Number
+  LogDir:
+    Description: Dir to save log, please to fill in the absolute path
+    Type: String
+  SysLogLevel:
+    Description: Sys Log Level, please select from the drop-down menu
+    Type: String
+    AllowedValues: 
+      - INFO
+      - WARN
+      - ERROR
+      - FATAL
+  MetaDir:
+    Description: Dir to save mete data, please to fill in the absolute path
+    Type: String
+  VolumeType: 
+    Type: String
+    Description: EBS volume type (data) to be attached to node in GBs [gp2,gp3,st1], one volume for data storage is mounted automatically by CloudFormation stack.
+    Default: gp2
+    AllowedValues:
+      - gp2
+      - gp3
+      - st1
+      - io1
+  Iops: 
+    Type: String
+    Description: IOPS of EBS volume when io1 type is chosen. Otherwise ignored.
+    Default: 1000
+  BeInstancePrivateIp1:
+    Description: be ip 1
+    Type: String
+  BeInstancePrivateIp2:
+    Description: be ip 2
+    Type: String
+  BeInstancePrivateIp3:
+    Description: be ip 3
+    Type: String
+  BeInstancePrivateIp4:
+    Description: be ip 4
+    Type: String
+  BeInstancePrivateIp5:
+    Description: be ip 5
+    Type: String
+Conditions:
+  UseIops: 
+    Fn::Equals: [!Ref VolumeType,"io1"]
+  3NodesCondition: !Equals [!Ref 'FeNodeCount', '3']
+Resources:
+  FeMasterInstance:
+    Type: AWS::EC2::Instance
+    Metadata:
+      Comment: Install fe master instance
+    Properties:
+      KeyName: !Ref KeyPairName
+      ImageId: !Ref LatestAmiId
+      InstanceType: !Ref FeNodeInstanceType
+      SubnetId: !Ref PrivateSubnetID
+      SecurityGroupIds:
+      - !Ref DorisServerSecurityGroup
+      BlockDeviceMappings:
+      - DeviceName: /dev/xvdt
+        Ebs:
+          VolumeSize: 50
+          VolumeType: !Ref VolumeType
+          Iops: !If [UseIops,!Ref Iops,!Ref AWS::NoValue]
+          DeleteOnTermination: true
+      UserData:
+        Fn::Base64:
+          !Sub |
+          #!/bin/bash -xe
+          # /opt/aws/bin/cfn-init -v --stack '${AWS::StackName}' --resource FeMasterInstance --region ${AWS::Region}
+
+          # update vm.map
+          echo "vm.max_map_count=2000000" >> /etc/sysctl.conf
+          echo "vm.overcommit_memory=1" >> /etc/sysctl.conf
+          echo "fs.file-max=30000000" >> /etc/sysctl.conf
+          echo "fs.nr_open=20000000" >> /etc/sysctl.conf
+          echo "net.ipv4.tcp_keepalive_time=180" >> /etc/sysctl.conf
+          sysctl -p
+
+          # close transparent huge page
+          if test -f /sys/kernel/mm/transparent_hugepage/enabled; then
+              echo never > /sys/kernel/mm/transparent_hugepage/enabled
+          fi
+          if test -f /sys/kernel/mm/transparent_hugepage/defrag; then
+              echo never > /sys/kernel/mm/transparent_hugepage/defrag
+          fi
+
+          # close thp permanently
+          echo "echo never > /sys/kernel/mm/transparent_hugepage/enabled" >> /etc/rc.local
+          echo "echo never > /sys/kernel/mm/transparent_hugepage/defrag" >> /etc/rc.local
+
+          # sync to disk
+          sync 
+
+          echo "Modify kernel params done." 
+
+          wget ${JDKDownLoadURL} -O java.tar.gz
+          mkdir ./jdk && tar -zxvf java.tar.gz -C ./jdk --strip-components 1
+          mkdir /usr/java && mv jdk /usr/java
+          echo 'export JAVA_HOME=/usr/java/jdk' >> /etc/profile
+          echo 'export JRE_HOME=/usr/java/jdk/jre' >> /etc/profile
+          echo 'export CLASSPATH=.:/usr/java/jdk/lib:/usr/java/jdk/jre/lib:$CLASSPATH' >> /etc/profile
+          echo 'export JAVA_PATH=/usr/java/jdk/bin:/usr/java/jdk/jre/bin' >> /etc/profile
+          echo 'export PATH=$PATH:/usr/java/jdk/bin:/usr/java/jdk/jre/bin' >> /etc/profile
+          source /etc/profile
+          rm -rf java.tar.gz
+
+          yum install MySQL-python.x86_64 -y
+          yum install mysql -y
+
+          sudo adduser Doris
+          sudo usermod -G Doris Doris
+
+          sudo mkfs.xfs /dev/xvdt
+          sudo mount /dev/xvdt /home/Doris
+          cd /home/Doris
+
+          mkdir -p /home/Doris/tool
+          echo '#!/usr/bin/python' >> /home/Doris/tool/addBeTool.py
+          echo '# -*- coding: UTF-8 -*-' >> /home/Doris/tool/addBeTool.py
+          echo 'import MySQLdb' >> /home/Doris/tool/addBeTool.py
+          echo 'import sys' >> /home/Doris/tool/addBeTool.py
+          echo 'import time' >> /home/Doris/tool/addBeTool.py
+          echo 'import os' >> /home/Doris/tool/addBeTool.py
+          echo 'time.sleep(30)' >> /home/Doris/tool/addBeTool.py
+          echo 'db = MySQLdb.connect(host = '"'"'127.0.0.1'"'"', user = '"'"'root'"'"', passwd = '"'"''"'"', port = 9030, connect_timeout=10)' >> /home/Doris/tool/addBeTool.py
+          echo 'cursor = db.cursor()' >> /home/Doris/tool/addBeTool.py
+          echo 'for index in range(len(sys.argv)):' >> /home/Doris/tool/addBeTool.py
+          echo '    if index == 0:' >> /home/Doris/tool/addBeTool.py
+          echo '        continue' >> /home/Doris/tool/addBeTool.py
+          echo '    if sys.argv[index] != '"'"'0.0.0.0'"'"':' >> /home/Doris/tool/addBeTool.py
+          echo '        cursor.execute("ALTER SYSTEM ADD BACKEND '"'"'%s:9050'"'"'"%sys.argv[index])' >> /home/Doris/tool/addBeTool.py
+          echo 'data = cursor.fetchone()' >> /home/Doris/tool/addBeTool.py
+          echo 'db.close()' >> /home/Doris/tool/addBeTool.py
+          chmod +x /home/Doris/tool/addBeTool.py
+
+          wget ${DorisDownLoadURL} -O Doris.tar.gz
+          mkdir ./Doris && tar -zxvf Doris.tar.gz -C ./Doris --strip-components 1
+          rm -rf Doris.tar.gz
+
+          cd /home/Doris/Doris/fe
+          echo '#!/bin/bash' >> params.sh
+          echo 'if [ $1 = "feDefaultMetaPath" ];then' >> params.sh
+          echo '    mkdir -p meta' >> params.sh
+          echo 'else' >> params.sh
+          echo '    mkdir -p $1' >> params.sh
+          echo '    sed -i "/^# meta_dir/ c\meta_dir = $1" conf/fe.conf' >> params.sh
+          echo 'fi' >> params.sh
+          echo 'if [ $2 != "feDefaultLogPath" ];then' >> params.sh
+          echo '    mkdir -p $2' >> params.sh
+          echo '    sed -i "/^LOG_DIR/ c\LOG_DIR = $2" conf/fe.conf' >> params.sh
+          echo '    sed -i "/^# sys_log_dir/ c\sys_log_dir = $2" conf/fe.conf' >> params.sh
+          echo '    sed -i "/^# audit_log_dir/ c\audit_log_dir = $2" conf/fe.conf' >> params.sh
+          echo 'fi' >> params.sh
+          echo 'sed -i "/^sys_log_level/ c\sys_log_level = $3" conf/fe.conf' >> params.sh
+          chmod +x params.sh
+          bash params.sh ${MetaDir} ${LogDir} ${SysLogLevel}
+
+          chown -R Doris:Doris /home/Doris
+          ulimit -n 65536 
+
+          bin/start_fe.sh --daemon
+
+          python /home/Doris/tool/addBeTool.py ${BeInstancePrivateIp1} ${BeInstancePrivateIp2} ${BeInstancePrivateIp3} ${BeInstancePrivateIp4} ${BeInstancePrivateIp5} >> addbe.log
+
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackId} --resource FeMasterInstance --region ${AWS::Region}
+    CreationPolicy:
+      ResourceSignal:
+        Count: 1
+        Timeout: "PT60M"
+  FeFollowerInstance1:
+    Condition: 3NodesCondition
+    Type: AWS::EC2::Instance
+    Metadata:
+      Comment: Install fe follower instance
+    Properties:
+      KeyName: !Ref KeyPairName
+      ImageId: !Ref LatestAmiId
+      InstanceType: !Ref FeNodeInstanceType
+      SubnetId: !Ref PrivateSubnetID
+      SecurityGroupIds:
+      - !Ref DorisServerSecurityGroup
+      BlockDeviceMappings:
+      - DeviceName: /dev/xvdt
+        Ebs:
+          VolumeSize: 50
+          VolumeType: !Ref VolumeType
+          Iops: !If [UseIops,!Ref Iops,!Ref AWS::NoValue]
+          DeleteOnTermination: true
+      UserData:
+        Fn::Base64:
+          !Sub |
+          #!/bin/bash -xe
+          # /opt/aws/bin/cfn-init -v --stack '${AWS::StackName}' --resource FeFollowerInstance1 --region ${AWS::Region}
+
+          # update vm.map
+          echo "vm.max_map_count=2000000" >> /etc/sysctl.conf
+          echo "vm.overcommit_memory=1" >> /etc/sysctl.conf
+          echo "fs.file-max=30000000" >> /etc/sysctl.conf
+          echo "fs.nr_open=20000000" >> /etc/sysctl.conf
+          echo "net.ipv4.tcp_keepalive_time=180" >> /etc/sysctl.conf
+          sysctl -p
+
+          # close transparent huge page
+          if test -f /sys/kernel/mm/transparent_hugepage/enabled; then
+              echo never > /sys/kernel/mm/transparent_hugepage/enabled
+          fi
+          if test -f /sys/kernel/mm/transparent_hugepage/defrag; then
+              echo never > /sys/kernel/mm/transparent_hugepage/defrag
+          fi
+
+          # close thp permanently
+          echo "echo never > /sys/kernel/mm/transparent_hugepage/enabled" >> /etc/rc.local
+          echo "echo never > /sys/kernel/mm/transparent_hugepage/defrag" >> /etc/rc.local
+
+          # sync to disk
+          sync 
+
+          echo "Modify kernel params done." 
+          
+          wget ${JDKDownLoadURL} -O java.tar.gz
+          mkdir ./jdk && tar -zxvf java.tar.gz -C ./jdk --strip-components 1
+          mkdir /usr/java && mv jdk /usr/java
+          echo 'export JAVA_HOME=/usr/java/jdk' >> /etc/profile
+          echo 'export JRE_HOME=/usr/java/jdk/jre' >> /etc/profile
+          echo 'export CLASSPATH=.:/usr/java/jdk/lib:/usr/java/jdk/jre/lib:$CLASSPATH' >> /etc/profile
+          echo 'export JAVA_PATH=/usr/java/jdk/bin:/usr/java/jdk/jre/bin' >> /etc/profile
+          echo 'export PATH=$PATH:/usr/java/jdk/bin:/usr/java/jdk/jre/bin' >> /etc/profile
+          source /etc/profile
+          rm -rf java.tar.gz
+
+          yum install MySQL-python.x86_64 -y
+          yum install mysql -y
+
+          sudo adduser Doris
+          sudo usermod -G Doris Doris
+
+          sudo mkfs.xfs /dev/xvdt
+          sudo mount /dev/xvdt /home/Doris
+          cd /home/Doris
+
+          mkdir -p /home/Doris/tool
+          echo '#!/usr/bin/python' >> /home/Doris/tool/addBeTool.py
+          echo '# -*- coding: UTF-8 -*-' >> /home/Doris/tool/addBeTool.py
+          echo 'import MySQLdb' >> /home/Doris/tool/addBeTool.py
+          echo 'import sys' >> /home/Doris/tool/addBeTool.py
+          echo 'import time' >> /home/Doris/tool/addBeTool.py
+          echo 'import os' >> /home/Doris/tool/addBeTool.py
+          echo 'time.sleep(30)' >> /home/Doris/tool/addBeTool.py
+          echo 'db = MySQLdb.connect(host = '"'"'127.0.0.1'"'"', user = '"'"'root'"'"', passwd = '"'"''"'"', port = 9030, connect_timeout=10)' >> /home/Doris/tool/addBeTool.py
+          echo 'cursor = db.cursor()' >> /home/Doris/tool/addBeTool.py
+          echo 'for index in range(len(sys.argv)):' >> /home/Doris/tool/addBeTool.py
+          echo '    if index == 0:' >> /home/Doris/tool/addBeTool.py
+          echo '        continue' >> /home/Doris/tool/addBeTool.py
+          echo '    if sys.argv[index] != '"'"'0.0.0.0'"'"':' >> /home/Doris/tool/addBeTool.py
+          echo '        cursor.execute("ALTER SYSTEM ADD BACKEND '"'"'%s:9050'"'"'"%sys.argv[index])' >> /home/Doris/tool/addBeTool.py
+          echo 'data = cursor.fetchone()' >> /home/Doris/tool/addBeTool.py
+          echo 'db.close()' >> /home/Doris/tool/addBeTool.py
+          chmod +x /home/Doris/tool/addBeTool.py
+
+          wget ${DorisDownLoadURL} -O Doris.tar.gz
+          mkdir ./Doris && tar -zxvf Doris.tar.gz -C ./Doris --strip-components 1
+          rm -rf Doris.tar.gz
+
+          cd /home/Doris/Doris/fe
+          echo '#!/bin/bash' >> params.sh
+          echo 'if [ $1 = "feDefaultMetaPath" ];then' >> params.sh
+          echo '    mkdir -p meta' >> params.sh
+          echo 'else' >> params.sh
+          echo '    mkdir -p $1' >> params.sh
+          echo '    sed -i "/^# meta_dir/ c\meta_dir = $1" conf/fe.conf' >> params.sh
+          echo 'fi' >> params.sh
+          echo 'if [ $2 != "feDefaultLogPath" ];then' >> params.sh
+          echo '    mkdir -p $2' >> params.sh
+          echo '    sed -i "/^LOG_DIR/ c\LOG_DIR = $2" conf/fe.conf' >> params.sh
+          echo '    sed -i "/^# sys_log_dir/ c\sys_log_dir = $2" conf/fe.conf' >> params.sh
+          echo '    sed -i "/^# audit_log_dir/ c\audit_log_dir = $2" conf/fe.conf' >> params.sh
+          echo 'fi' >> params.sh
+          echo 'sed -i "/^sys_log_level/ c\sys_log_level = $3" conf/fe.conf' >> params.sh
+          chmod +x params.sh
+          bash params.sh ${MetaDir} ${LogDir} ${SysLogLevel}
+
+          chown -R Doris:Doris /home/Doris
+          ulimit -n 65536 
+
+          bin/start_fe.sh --helper ${FeMasterInstance.PrivateIp}:9010 --daemon
+
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackId} --resource FeFollowerInstance1 --region ${AWS::Region}
+    CreationPolicy:
+      ResourceSignal:
+        Count: 1
+        Timeout: "PT60M"
+  FeFollowerInstance2:
+    Condition: 3NodesCondition
+    Type: AWS::EC2::Instance
+    Metadata:
+      Comment: Install fe follower instance
+    Properties:
+      KeyName: !Ref KeyPairName
+      ImageId: !Ref LatestAmiId
+      InstanceType: !Ref FeNodeInstanceType
+      SubnetId: !Ref PrivateSubnetID
+      SecurityGroupIds:
+      - !Ref DorisServerSecurityGroup
+      BlockDeviceMappings:
+      - DeviceName: /dev/xvdt
+        Ebs:
+          VolumeSize: 50
+          VolumeType: !Ref VolumeType
+          Iops: !If [UseIops,!Ref Iops,!Ref AWS::NoValue]
+          DeleteOnTermination: true
+      UserData:
+        Fn::Base64:
+          !Sub |
+          #!/bin/bash -xe
+          # /opt/aws/bin/cfn-init -v --stack '${AWS::StackName}' --resource FeFollowerInstance2 --region ${AWS::Region}
+
+          # update vm.map
+          echo "vm.max_map_count=2000000" >> /etc/sysctl.conf
+          echo "vm.overcommit_memory=1" >> /etc/sysctl.conf
+          echo "fs.file-max=30000000" >> /etc/sysctl.conf
+          echo "fs.nr_open=20000000" >> /etc/sysctl.conf
+          echo "net.ipv4.tcp_keepalive_time=180" >> /etc/sysctl.conf
+          sysctl -p
+
+          # close transparent huge page
+          if test -f /sys/kernel/mm/transparent_hugepage/enabled; then
+              echo never > /sys/kernel/mm/transparent_hugepage/enabled
+          fi
+          if test -f /sys/kernel/mm/transparent_hugepage/defrag; then
+              echo never > /sys/kernel/mm/transparent_hugepage/defrag
+          fi
+
+          # close thp permanently
+          echo "echo never > /sys/kernel/mm/transparent_hugepage/enabled" >> /etc/rc.local
+          echo "echo never > /sys/kernel/mm/transparent_hugepage/defrag" >> /etc/rc.local
+
+          # sync to disk
+          sync 
+
+          echo "Modify kernel params done." 
+          
+          wget ${JDKDownLoadURL} -O java.tar.gz
+          mkdir ./jdk && tar -zxvf java.tar.gz -C ./jdk --strip-components 1
+          mkdir /usr/java && mv jdk /usr/java
+          echo 'export JAVA_HOME=/usr/java/jdk' >> /etc/profile
+          echo 'export JRE_HOME=/usr/java/jdk/jre' >> /etc/profile
+          echo 'export CLASSPATH=.:/usr/java/jdk/lib:/usr/java/jdk/jre/lib:$CLASSPATH' >> /etc/profile
+          echo 'export JAVA_PATH=/usr/java/jdk/bin:/usr/java/jdk/jre/bin' >> /etc/profile
+          echo 'export PATH=$PATH:/usr/java/jdk/bin:/usr/java/jdk/jre/bin' >> /etc/profile
+          source /etc/profile
+          rm -rf java.tar.gz
+
+          yum install MySQL-python.x86_64 -y
+          yum install mysql -y
+
+          sudo adduser Doris
+          sudo usermod -G Doris Doris
+
+          sudo mkfs.xfs /dev/xvdt
+          sudo mount /dev/xvdt /home/Doris
+          cd /home/Doris
+
+          mkdir -p /home/Doris/tool
+          echo '#!/usr/bin/python' >> /home/Doris/tool/addBeTool.py
+          echo '# -*- coding: UTF-8 -*-' >> /home/Doris/tool/addBeTool.py
+          echo 'import MySQLdb' >> /home/Doris/tool/addBeTool.py
+          echo 'import sys' >> /home/Doris/tool/addBeTool.py
+          echo 'import time' >> /home/Doris/tool/addBeTool.py
+          echo 'import os' >> /home/Doris/tool/addBeTool.py
+          echo 'time.sleep(30)' >> /home/Doris/tool/addBeTool.py
+          echo 'db = MySQLdb.connect(host = '"'"'127.0.0.1'"'"', user = '"'"'root'"'"', passwd = '"'"''"'"', port = 9030, connect_timeout=10)' >> /home/Doris/tool/addBeTool.py
+          echo 'cursor = db.cursor()' >> /home/Doris/tool/addBeTool.py
+          echo 'for index in range(len(sys.argv)):' >> /home/Doris/tool/addBeTool.py
+          echo '    if index == 0:' >> /home/Doris/tool/addBeTool.py
+          echo '        continue' >> /home/Doris/tool/addBeTool.py
+          echo '    if sys.argv[index] != '"'"'0.0.0.0'"'"':' >> /home/Doris/tool/addBeTool.py
+          echo '        cursor.execute("ALTER SYSTEM ADD BACKEND '"'"'%s:9050'"'"'"%sys.argv[index])' >> /home/Doris/tool/addBeTool.py
+          echo 'data = cursor.fetchone()' >> /home/Doris/tool/addBeTool.py
+          echo 'db.close()' >> /home/Doris/tool/addBeTool.py
+          chmod +x /home/Doris/tool/addBeTool.py
+
+          wget ${DorisDownLoadURL} -O Doris.tar.gz
+          mkdir ./Doris && tar -zxvf Doris.tar.gz -C ./Doris --strip-components 1
+          rm -rf Doris.tar.gz
+
+          cd /home/Doris/Doris/fe
+          echo '#!/bin/bash' >> params.sh
+          echo 'if [ $1 = "feDefaultMetaPath" ];then' >> params.sh
+          echo '    mkdir -p meta' >> params.sh
+          echo 'else' >> params.sh
+          echo '    mkdir -p $1' >> params.sh
+          echo '    sed -i "/^# meta_dir/ c\meta_dir = $1" conf/fe.conf' >> params.sh
+          echo 'fi' >> params.sh
+          echo 'if [ $2 != "feDefaultLogPath" ];then' >> params.sh
+          echo '    mkdir -p $2' >> params.sh
+          echo '    sed -i "/^LOG_DIR/ c\LOG_DIR = $2" conf/fe.conf' >> params.sh
+          echo '    sed -i "/^# sys_log_dir/ c\sys_log_dir = $2" conf/fe.conf' >> params.sh
+          echo '    sed -i "/^# audit_log_dir/ c\audit_log_dir = $2" conf/fe.conf' >> params.sh
+          echo 'fi' >> params.sh
+          echo 'sed -i "/^sys_log_level/ c\sys_log_level = $3" conf/fe.conf' >> params.sh
+          chmod +x params.sh
+          bash params.sh ${MetaDir} ${LogDir} ${SysLogLevel}
+
+          chown -R Doris:Doris /home/Doris
+          ulimit -n 65536 
+
+          bin/start_fe.sh --helper ${FeMasterInstance.PrivateIp}:9010 --daemon
+
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackId} --resource FeFollowerInstance2 --region ${AWS::Region}
+    CreationPolicy:
+      ResourceSignal:
+        Count: 1
+        Timeout: "PT60M"
+  ToolInstance:
+    Condition: 3NodesCondition
+    Type: AWS::EC2::Instance
+    Metadata:
+      Comment: Install tool instance
+    Properties:
+      KeyName: !Ref KeyPairName
+      ImageId: !Ref LatestAmiId
+      InstanceType: !Ref FeNodeInstanceType
+      SubnetId: !Ref PrivateSubnetID
+      SecurityGroupIds:
+      - !Ref DorisServerSecurityGroup
+      UserData:
+        Fn::Base64:
+          !Sub |
+          #!/bin/bash -xe
+          # /opt/aws/bin/cfn-init -v --stack '${AWS::StackName}' --resource ToolInstance --region ${AWS::Region}
+          
+          # update vm.map
+          echo "vm.max_map_count=2000000" >> /etc/sysctl.conf
+          echo "vm.overcommit_memory=1" >> /etc/sysctl.conf
+          echo "fs.file-max=30000000" >> /etc/sysctl.conf
+          echo "fs.nr_open=20000000" >> /etc/sysctl.conf
+          echo "net.ipv4.tcp_keepalive_time=180" >> /etc/sysctl.conf
+          sysctl -p
+
+          # close transparent huge page
+          if test -f /sys/kernel/mm/transparent_hugepage/enabled; then
+              echo never > /sys/kernel/mm/transparent_hugepage/enabled
+          fi
+          if test -f /sys/kernel/mm/transparent_hugepage/defrag; then
+              echo never > /sys/kernel/mm/transparent_hugepage/defrag
+          fi
+
+          # close thp permanently
+          echo "echo never > /sys/kernel/mm/transparent_hugepage/enabled" >> /etc/rc.local
+          echo "echo never > /sys/kernel/mm/transparent_hugepage/defrag" >> /etc/rc.local
+
+          # sync to disk
+          sync 
+
+          echo "Modify kernel params done." 
+          ulimit -n 65536 
+
+          yum install MySQL-python.x86_64 -y
+          mkdir -p /home/tool
+          cd /home/tool
+          touch addToMaster.py
+          chmod +x addToMaster.py
+          echo '#!/usr/bin/python' >> addToMaster.py
+          echo '# -*- coding: UTF-8 -*-' >> addToMaster.py
+          echo 'import MySQLdb' >> addToMaster.py
+          echo 'import sys' >> addToMaster.py
+          echo 'import time' >> addToMaster.py
+          echo 'import os' >> addToMaster.py
+          echo 'time.sleep(30)' >> addToMaster.py
+          echo 'db = MySQLdb.connect(host = sys.argv[1], user = '"'"'root'"'"', passwd = '"'"''"'"', port = 9030, connect_timeout=10)' >> addToMaster.py
+          echo 'cursor = db.cursor()' >> addToMaster.py
+          echo 'cursor.execute("ALTER SYSTEM ADD FOLLOWER '"'"'%s:9010'"'"'"%sys.argv[2])' >> addToMaster.py
+          echo 'cursor.execute("ALTER SYSTEM ADD FOLLOWER '"'"'%s:9010'"'"'"%sys.argv[3])' >> addToMaster.py
+          echo 'data = cursor.fetchone()' >> addToMaster.py
+          echo 'db.close()' >> addToMaster.py
+          python addToMaster.py ${FeMasterInstance.PrivateIp} ${FeFollowerInstance1.PrivateIp} ${FeFollowerInstance2.PrivateIp}
+          
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackId} --resource ToolInstance --region ${AWS::Region}
+    CreationPolicy:
+      ResourceSignal:
+        Count: 1
+        Timeout: "PT60M"
+Outputs:
+  FeMasterInstance:
+    Description: fe master instance
+    Value: !Ref FeMasterInstance
+  FeMasterInstancePrivateIp:
+    Value: !GetAtt FeMasterInstance.PrivateIp
+  FeFollowerInstance1:
+    Condition: 3NodesCondition
+    Description: fe follower instance1
+    Value: !Ref FeFollowerInstance1
+  FeFollowerInstance1PrivateIp:
+    Condition: 3NodesCondition
+    Value: !GetAtt FeFollowerInstance1.PrivateIp
+  FeFollowerInstance2:
+    Condition: 3NodesCondition
+    Description: fe follower instance2
+    Value: !Ref FeFollowerInstance2
+  FeFollowerInstance2PrivateIp:
+    Condition: 3NodesCondition
+    Value: !GetAtt FeFollowerInstance2.PrivateIp

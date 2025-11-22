@@ -45,7 +45,7 @@ class DorisBastion(Construct):
             security_group=self.security_group,
             instance_name="DorisBastion",
             machine_image=machine_image,
-            instance_type=ec2.InstanceType("t4g.nano"),
+            instance_type=ec2.InstanceType("t3.nano"),
         )
         self.instance = bastion_host.instance
 

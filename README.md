@@ -1,6 +1,10 @@
 # aws-cdk-apache-doris
 
-AWS CDK (Python) Construct(s) for Apache Doris.
+AWS CDK (Python) Construcs for Apache Doris.
+
+NOTE: These implement only the "[Integrated Storage & Compute](https://doris.apache.org/docs/3.x/install/deploy-manually/integrated-storage-compute-deploy-manually)" deployment style.
+
+This is currently based on the CloudFormation template [linked here](https://doris.apache.org/docs/3.x/install/deploy-on-cloud/doris-on-aws).
 
 ## Development
 

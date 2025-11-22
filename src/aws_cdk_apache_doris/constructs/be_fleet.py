@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from typing import Any
 
-from aws_cdk import Stack
+from aws_cdk import CfnCreationPolicy, CfnResourceSignal, Stack
 from aws_cdk import (
     aws_ec2 as ec2,
 )
@@ -70,6 +70,15 @@ class DorisBeFleet(Construct):
                 user_data=ec2.UserData.custom(user_data),
                 block_devices=block_devices,
             )
+
+            cfn_instance = instance.node.default_child
+            if isinstance(cfn_instance, ec2.CfnInstance):
+                cfn_instance.cfn_options.creation_policy = CfnCreationPolicy(
+                    resource_signal=CfnResourceSignal(
+                        count=1,
+                        timeout="PT10M",
+                    ),
+                )
 
             self.instances.append(instance)
             self.private_ips[index] = instance.instance_private_ip or "0.0.0.0"

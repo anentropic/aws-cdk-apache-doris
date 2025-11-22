@@ -1,5 +1,6 @@
 import os
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
+from enum import StrEnum
 from typing import Any, cast
 
 from aws_cdk import (
@@ -29,37 +30,56 @@ from aws_cdk_apache_doris.constructs import (
 
 LAMBDA_SRC_DIR = os.path.join(os.path.dirname(__file__), "lambda_src")
 
-FE_INSTANCE_TYPES = [
-    "t3.large",
-    "t3.xlarge",
-    "t3.2xlarge",
-    "m5.large",
-    "m5.xlarge",
-    "m5.2xlarge",
-    "m5.4xlarge",
-    "m6i.large",
-    "m6i.xlarge",
-    "m6i.2xlarge",
-    "m6i.4xlarge",
-    "r5.large",
-    "r5.xlarge",
-    "r5.2xlarge",
-    "r5.4xlarge",
-    "r5.8xlarge",
-    "r6i.large",
-    "r6i.xlarge",
-    "r6i.2xlarge",
-    "r6i.4xlarge",
-    "r6i.8xlarge",
-]
-BE_INSTANCE_TYPES = list(FE_INSTANCE_TYPES)
-LOG_LEVELS = ["INFO", "WARN", "ERROR", "FATAL"]
-VOLUME_TYPES = ["gp2", "gp3", "st1", "io1"]
-DORIS_VERSIONS = ["213", "206"]
-BE_NODE_COUNTS = [1, 3, 5]
-FE_NODE_COUNTS = [1]
-
 DORIS_PORTS = [9060, 8040, 9050, 8060, 8030, 9020, 9030, 9010, 443]
+
+
+class InstanceTypeOption(StrEnum):
+    T3_LARGE = "t3.large"
+    T3_XLARGE = "t3.xlarge"
+    T3_2XLARGE = "t3.2xlarge"
+    M5_LARGE = "m5.large"
+    M5_XLARGE = "m5.xlarge"
+    M5_2XLARGE = "m5.2xlarge"
+    M5_4XLARGE = "m5.4xlarge"
+    M6I_LARGE = "m6i.large"
+    M6I_XLARGE = "m6i.xlarge"
+    M6I_2XLARGE = "m6i.2xlarge"
+    M6I_4XLARGE = "m6i.4xlarge"
+    R5_LARGE = "r5.large"
+    R5_XLARGE = "r5.xlarge"
+    R5_2XLARGE = "r5.2xlarge"
+    R5_4XLARGE = "r5.4xlarge"
+    R5_8XLARGE = "r5.8xlarge"
+    R6I_LARGE = "r6i.large"
+    R6I_XLARGE = "r6i.xlarge"
+    R6I_2XLARGE = "r6i.2xlarge"
+    R6I_4XLARGE = "r6i.4xlarge"
+    R6I_8XLARGE = "r6i.8xlarge"
+
+
+class LogLevelOption(StrEnum):
+    INFO = "INFO"
+    WARN = "WARN"
+    ERROR = "ERROR"
+    FATAL = "FATAL"
+
+
+class VolumeTypeOption(StrEnum):
+    GP2 = "gp2"
+    GP3 = "gp3"
+    ST1 = "st1"
+    IO1 = "io1"
+
+
+class DorisVersion(StrEnum):
+    V213 = "213"
+    V206 = "206"
+
+
+class ClientAccessMode(StrEnum):
+    SECURITY_GROUP = "security-group"
+    CIDR = "cidr"
+
 
 DORIS_DOWNLOADS = {
     "us-east-1": {
@@ -87,11 +107,6 @@ IMAGE_AMIS = {
 }
 
 
-def _require_choice(value: Any, allowed: Sequence[Any], label: str) -> None:
-    if value not in allowed:
-        raise ValueError(f"{label} must be one of {allowed}")
-
-
 def _require_region_lookup(mapping: Mapping[str, Any], key: str, label: str) -> Any:
     try:
         return mapping[key]
@@ -109,19 +124,20 @@ class DorisCluster(Construct):
         public_subnet: ec2.ISubnet,
         key_pair_name: str,
         remote_access_cidr: str = "0.0.0.0/0",
-        doris_version: str = "213",
+        doris_version: DorisVersion = DorisVersion.V213,
         fe_node_count: int = 1,
-        fe_node_instance_type: str = FE_INSTANCE_TYPES[0],
+        fe_node_instance_type: InstanceTypeOption = InstanceTypeOption.T3_LARGE,
         be_node_count: int = 3,
-        be_node_instance_type: str = BE_INSTANCE_TYPES[0],
+        be_node_instance_type: InstanceTypeOption = InstanceTypeOption.T3_LARGE,
         log_dir: str = "feDefaultLogPath",
-        log_level: str = "INFO",
+        log_level: LogLevelOption = LogLevelOption.INFO,
         meta_dir: str = "feDefaultMetaPath",
         be_log_dir: str = "beDefaultLogPath",
-        sys_log_level: str = "INFO",
-        volume_type: str = "gp2",
+        sys_log_level: LogLevelOption = LogLevelOption.INFO,
+        volume_type: VolumeTypeOption = VolumeTypeOption.GP2,
         volume_size: str = "50",
         vpc_cidr: str | None = None,
+        client_access_mode: ClientAccessMode = ClientAccessMode.SECURITY_GROUP,
     ) -> None:
         super().__init__(scope, construct_id)
 
@@ -130,21 +146,25 @@ class DorisCluster(Construct):
         self.public_subnet_id = public_subnet.subnet_id
         self.key_pair_name = key_pair_name
         self.remote_access_cidr = remote_access_cidr
-        self.doris_version = doris_version
+        self.doris_version = doris_version.value
         self.fe_node_count = fe_node_count
-        self.fe_node_instance_type = fe_node_instance_type
+        self.fe_node_instance_type = fe_node_instance_type.value
         self.be_node_count = be_node_count
-        self.be_node_instance_type = be_node_instance_type
+        self.be_node_instance_type = be_node_instance_type.value
         self.log_dir = log_dir
-        self.log_level = log_level
+        self.log_level = log_level.value
         self.meta_dir = meta_dir
         self.be_log_dir = be_log_dir
-        self.sys_log_level = sys_log_level
-        self.volume_type = volume_type
+        self.sys_log_level = sys_log_level.value
+        self.volume_type = volume_type.value
         self.volume_size = volume_size
-        self.vpc_cidr = vpc_cidr or getattr(vpc, "vpc_cidr_block", "0.0.0.0/0")
+        self.vpc_cidr = vpc_cidr
+        self.client_access_mode = client_access_mode.value
 
         self._validate_props()
+        self.use_client_access_security_group = (
+            self.client_access_mode == "security-group"
+        )
         self._resolve_region_assets()
 
         self._create_custom_resource_role()
@@ -155,27 +175,24 @@ class DorisCluster(Construct):
         self._expose_outputs()
 
     def _validate_props(self) -> None:
-        _require_choice(
-            self.fe_node_instance_type,
-            FE_INSTANCE_TYPES,
-            "FE instance type",
-        )
-        _require_choice(
-            self.be_node_instance_type,
-            BE_INSTANCE_TYPES,
-            "BE instance type",
-        )
-        _require_choice(self.log_level, LOG_LEVELS, "FE log level")
-        _require_choice(self.sys_log_level, LOG_LEVELS, "BE log level")
-        _require_choice(self.volume_type, VOLUME_TYPES, "Volume type")
-        _require_choice(self.doris_version, DORIS_VERSIONS, "Doris version")
-        _require_choice(self.fe_node_count, FE_NODE_COUNTS, "FE node count")
-        _require_choice(self.be_node_count, BE_NODE_COUNTS, "BE node count")
+        if self.fe_node_count <= 0:
+            raise ValueError("FE node count must be a positive integer")
+        if self.be_node_count <= 0:
+            raise ValueError("BE node count must be a positive integer")
 
         try:
             int(self.volume_size)
         except ValueError as err:
             raise ValueError("Volume size must be a numeric string") from err
+
+        if self.client_access_mode == "cidr" and not self.vpc_cidr:
+            raise ValueError(
+                "client_access_mode='cidr' requires vpc_cidr to be provided"
+            )
+        if self.client_access_mode == "security-group" and self.vpc_cidr:
+            raise ValueError(
+                "client_access_mode='security-group' cannot be combined with vpc_cidr"
+            )
 
     def _resolve_region_assets(self) -> None:
         stack = Stack.of(self)
@@ -321,11 +338,17 @@ class DorisCluster(Construct):
             "DorisSecurityGroups",
             vpc=self.vpc,
             vpc_cidr=self.vpc_cidr,
+            use_client_access_security_group=self.use_client_access_security_group,
             bastion_security_group=self.bastion.security_group,
             doris_ports=DORIS_PORTS,
         )
 
         self.doris_security_group = self.doris_security_groups.security_group
+        self.client_access_security_group = (
+            self.doris_security_groups.client_access_security_group
+            if self.use_client_access_security_group
+            else None
+        )
 
     def _create_cloudformation_endpoint(self) -> None:
         private_dns_enabled_token = cast(
@@ -397,6 +420,12 @@ class DorisCluster(Construct):
         CfnOutput(self, "BastionEip", value=self.bastion_public_ip)
         CfnOutput(self, "BastionSecurityGroupId", value=self.bastion_security_group_id)
         CfnOutput(self, "DorisSecurityGroupId", value=self.doris_security_group_id)
+        if self.client_access_security_group is not None:
+            CfnOutput(
+                self,
+                "DorisClientAccessSecurityGroupId",
+                value=self.client_access_security_group_id,
+            )
         CfnOutput(self, "FeMasterInstanceId", value=self.fe_master_instance.instance_id)
         CfnOutput(self, "FeMasterPrivateIp", value=self.fe_master_private_ip)
 
@@ -419,6 +448,15 @@ class DorisCluster(Construct):
     @property
     def doris_security_group_id(self) -> str:
         return self.doris_security_groups.security_group_id
+
+    @property
+    def client_access_security_group_id(self) -> str:
+        if self.client_access_security_group is None:
+            raise ValueError(
+                "Client access security group is only available when "
+                "client_access_mode='security-group'"
+            )
+        return self.doris_security_groups.client_access_security_group_id
 
     @property
     def fe_master_private_ip(self) -> str:

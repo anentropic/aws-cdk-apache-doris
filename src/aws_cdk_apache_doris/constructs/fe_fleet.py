@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from typing import Any
 
-from aws_cdk import Stack
+from aws_cdk import CfnCreationPolicy, CfnResourceSignal, Stack
 from aws_cdk import (
     aws_ec2 as ec2,
 )
@@ -67,6 +67,15 @@ class DorisFeFleet(Construct):
             ],
             user_data=ec2.UserData.custom(user_data),
         )
+
+        cfn_instance = self.instance.node.default_child
+        if isinstance(cfn_instance, ec2.CfnInstance):
+            cfn_instance.cfn_options.creation_policy = CfnCreationPolicy(
+                resource_signal=CfnResourceSignal(
+                    count=1,
+                    timeout="PT60M",
+                ),
+            )
 
     def add_launch_dependencies(self, *dependencies: Any) -> None:
         for dependency in dependencies:

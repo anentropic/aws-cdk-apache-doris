@@ -29,6 +29,9 @@ jobs:
           uv sync --extra dev
           uv pip install -e .
 
+      - name: Install AWS CDK CLI
+        run: npm install -g aws-cdk
+
       - name: Run pytest
         run: uv run pytest
 

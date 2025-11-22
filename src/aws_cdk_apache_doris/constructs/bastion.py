@@ -1,3 +1,5 @@
+from typing import cast
+
 from aws_cdk import Stack
 from aws_cdk import aws_ec2 as ec2
 from aws_cdk import aws_iam as iam
@@ -35,16 +37,21 @@ class DorisBastion(Construct):
             {Stack.of(self).region: ami_id},
         )
 
-        self.instance = ec2.Instance(
+        bastion_host = ec2.BastionHostLinux(
             self,
             "BastionHost",
             vpc=vpc,
-            key_name=key_pair_name,
-            instance_type=ec2.InstanceType("t2.micro"),
-            machine_image=machine_image,
+            subnet_selection=ec2.SubnetSelection(subnets=[public_subnet]),
             security_group=self.security_group,
-            vpc_subnets=ec2.SubnetSelection(subnets=[public_subnet]),
+            instance_name="DorisBastion",
+            machine_image=machine_image,
+            instance_type=ec2.InstanceType("t4g.nano"),
         )
+        self.instance = bastion_host.instance
+
+        cfn_instance = cast(ec2.CfnInstance, self.instance.node.default_child)
+        cfn_instance.key_name = key_pair_name
+
         self.instance.user_data.add_commands("yum install -y mysql")
         self.instance.role.add_to_principal_policy(
             iam.PolicyStatement(

@@ -1,7 +1,8 @@
 """User data template helpers for the Doris CDK app."""
 
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 _USER_DATA_DIR = Path(__file__).resolve().parent
 

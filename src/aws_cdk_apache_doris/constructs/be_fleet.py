@@ -1,11 +1,7 @@
-from typing import Any, List, Sequence
+from collections.abc import Sequence
+from typing import Any
 
-from aws_cdk import (
-    CfnCreationPolicy,
-    CfnResourceSignal,
-    Fn,
-    Stack,
-)
+from aws_cdk import Stack
 from aws_cdk import (
     aws_ec2 as ec2,
 )
@@ -20,8 +16,9 @@ class DorisBeFleet(Construct):
         scope: Construct,
         construct_id: str,
         *,
-        subnet_id: str,
-        security_group_id: str,
+        vpc: ec2.IVpc,
+        subnet: ec2.ISubnet,
+        security_group: ec2.ISecurityGroup,
         key_pair_name: str,
         ami_id: str,
         instance_type: str,
@@ -37,9 +34,20 @@ class DorisBeFleet(Construct):
 
         volume_size_num = int(volume_size)
         iops_value = 1000 if volume_type == "io1" else None
+        volume_type_enum = ec2.EbsDeviceVolumeType[volume_type.upper()]
+        machine_image = ec2.MachineImage.generic_linux(
+            {Stack.of(self).region: ami_id},
+        )
+        instance_type_obj = ec2.InstanceType(instance_type)
 
-        self.instances: List[ec2.CfnInstance] = []
-        self.private_ips: List[str] = ["0.0.0.0"] * 5
+        self.instances: list[ec2.Instance] = []
+        self.private_ips: list[str] = ["0.0.0.0"] * node_count
+
+        block_devices = self._block_devices(
+            volume_size_num,
+            volume_type_enum,
+            iops_value,
+        )
 
         for index in range(node_count):
             logical_id = f"BeInstance{index + 1}"
@@ -50,32 +58,26 @@ class DorisBeFleet(Construct):
                 be_log_dir,
                 sys_log_level,
             )
-            instance = ec2.CfnInstance(
+            instance = ec2.Instance(
                 self,
                 logical_id,
-                image_id=ami_id,
-                instance_type=instance_type,
-                subnet_id=subnet_id,
-                security_group_ids=[security_group_id],
+                vpc=vpc,
+                vpc_subnets=ec2.SubnetSelection(subnets=[subnet]),
+                security_group=security_group,
                 key_name=key_pair_name,
-                block_device_mappings=self._block_device_mappings(
-                    volume_size_num,
-                    volume_type,
-                    iops_value,
-                ),
-                user_data=Fn.base64(user_data),
-            )
-            instance.cfn_options.creation_policy = CfnCreationPolicy(
-                resource_signal=CfnResourceSignal(count=1, timeout="PT10M"),
+                machine_image=machine_image,
+                instance_type=instance_type_obj,
+                user_data=ec2.UserData.custom(user_data),
+                block_devices=block_devices,
             )
 
             self.instances.append(instance)
-            self.private_ips[index] = instance.attr_private_ip
+            self.private_ips[index] = instance.instance_private_ip or "0.0.0.0"
 
     def add_launch_dependencies(self, *dependencies: Any) -> None:
         for dependency in dependencies:
             for instance in self.instances:
-                instance.add_dependency(dependency)
+                instance.node.add_dependency(dependency)
 
     def _render_user_data(
         self,
@@ -102,24 +104,24 @@ class DorisBeFleet(Construct):
         )
 
     @staticmethod
-    def _block_device_mappings(
+    def _block_devices(
         volume_size: int,
-        volume_type: str,
+        volume_type: ec2.EbsDeviceVolumeType,
         iops_value: int | None,
-    ) -> Sequence[ec2.CfnInstance.BlockDeviceMappingProperty]:
+    ) -> Sequence[ec2.BlockDevice]:
         return [
-            ec2.CfnInstance.BlockDeviceMappingProperty(
+            ec2.BlockDevice(
                 device_name="/dev/xvdh",
-                ebs=ec2.CfnInstance.EbsProperty(
+                volume=ec2.BlockDeviceVolume.ebs(
                     volume_size=volume_size,
                     volume_type=volume_type,
                     iops=iops_value,
                     delete_on_termination=True,
                 ),
             ),
-            ec2.CfnInstance.BlockDeviceMappingProperty(
+            ec2.BlockDevice(
                 device_name="/dev/xvdt",
-                ebs=ec2.CfnInstance.EbsProperty(
+                volume=ec2.BlockDeviceVolume.ebs(
                     volume_size=50,
                     volume_type=volume_type,
                     iops=iops_value,

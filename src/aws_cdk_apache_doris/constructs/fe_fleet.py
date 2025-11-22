@@ -1,11 +1,7 @@
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
-from aws_cdk import (
-    CfnCreationPolicy,
-    CfnResourceSignal,
-    Fn,
-    Stack,
-)
+from aws_cdk import Stack
 from aws_cdk import (
     aws_ec2 as ec2,
 )
@@ -20,8 +16,9 @@ class DorisFeFleet(Construct):
         scope: Construct,
         construct_id: str,
         *,
-        subnet_id: str,
-        security_group_id: str,
+        vpc: ec2.IVpc,
+        subnet: ec2.ISubnet,
+        security_group: ec2.ISecurityGroup,
         key_pair_name: str,
         ami_id: str,
         instance_type: str,
@@ -36,6 +33,9 @@ class DorisFeFleet(Construct):
         super().__init__(scope, construct_id)
 
         iops_value = 1000 if volume_type == "io1" else None
+        volume_type_enum = ec2.EbsDeviceVolumeType[volume_type.upper()]
+        machine_image = ec2.MachineImage.generic_linux({Stack.of(self).region: ami_id})
+        instance_type_obj = ec2.InstanceType(instance_type)
         user_data = self._render_user_data(
             jdk_download_url,
             doris_download_url,
@@ -45,34 +45,32 @@ class DorisFeFleet(Construct):
             be_private_ips,
         )
 
-        self.instance = ec2.CfnInstance(
+        self.instance = ec2.Instance(
             self,
             "FeMasterInstance",
-            image_id=ami_id,
-            instance_type=instance_type,
-            subnet_id=subnet_id,
-            security_group_ids=[security_group_id],
+            vpc=vpc,
+            vpc_subnets=ec2.SubnetSelection(subnets=[subnet]),
+            security_group=security_group,
             key_name=key_pair_name,
-            block_device_mappings=[
-                ec2.CfnInstance.BlockDeviceMappingProperty(
+            machine_image=machine_image,
+            instance_type=instance_type_obj,
+            block_devices=[
+                ec2.BlockDevice(
                     device_name="/dev/xvdt",
-                    ebs=ec2.CfnInstance.EbsProperty(
+                    volume=ec2.BlockDeviceVolume.ebs(
                         volume_size=50,
-                        volume_type=volume_type,
+                        volume_type=volume_type_enum,
                         iops=iops_value,
                         delete_on_termination=True,
                     ),
                 )
             ],
-            user_data=Fn.base64(user_data),
-        )
-        self.instance.cfn_options.creation_policy = CfnCreationPolicy(
-            resource_signal=CfnResourceSignal(count=1, timeout="PT60M"),
+            user_data=ec2.UserData.custom(user_data),
         )
 
     def add_launch_dependencies(self, *dependencies: Any) -> None:
         for dependency in dependencies:
-            self.instance.add_dependency(dependency)
+            self.instance.node.add_dependency(dependency)
 
     def _render_user_data(
         self,

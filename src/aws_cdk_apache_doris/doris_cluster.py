@@ -1,11 +1,6 @@
 import os
-from typing import (
-    Any,
-    List,
-    Mapping,
-    Sequence,
-    cast,
-)
+from collections.abc import Mapping, Sequence
+from typing import Any, cast
 
 from aws_cdk import (
     CfnOutput,
@@ -333,22 +328,23 @@ class DorisCluster(Construct):
         self.doris_security_group = self.doris_security_groups.security_group
 
     def _create_cloudformation_endpoint(self) -> None:
-        private_dns_enabled = cast(
+        private_dns_enabled_token = cast(
             IResolvable,
             self.private_dns_query.get_att("CanEnablePrivateDns"),
         )
 
-        self.cfn_endpoint = ec2.CfnVPCEndpoint(
+        self.cfn_endpoint = ec2.InterfaceVpcEndpoint(
             self,
             "CloudFormationEndpoint",
-            vpc_id=self.vpc.vpc_id,
-            service_name=f"com.amazonaws.{self.region}.cloudformation",
-            vpc_endpoint_type="Interface",
-            private_dns_enabled=private_dns_enabled,
-            subnet_ids=[self.public_subnet_id],
-            security_group_ids=[
-                self.doris_security_groups.security_group_id,
-                self.bastion.security_group_id,
+            vpc=self.vpc,
+            service=ec2.InterfaceVpcEndpointService(
+                f"com.amazonaws.{self.region}.cloudformation"
+            ),
+            private_dns_enabled=cast(bool, private_dns_enabled_token),
+            subnets=ec2.SubnetSelection(subnets=[self.public_subnet]),
+            security_groups=[
+                self.doris_security_group,
+                self.bastion.security_group,
             ],
         )
         self.cfn_endpoint.node.add_dependency(self.enable_dns)
@@ -357,8 +353,9 @@ class DorisCluster(Construct):
         be_fleet = DorisBeFleet(
             self,
             "BeFleet",
-            subnet_id=self.public_subnet_id,
-            security_group_id=self.doris_security_groups.security_group_id,
+            vpc=self.vpc,
+            subnet=self.public_subnet,
+            security_group=self.doris_security_group,
             key_pair_name=self.key_pair_name,
             ami_id=self.ami_id,
             instance_type=self.be_node_instance_type,
@@ -378,8 +375,9 @@ class DorisCluster(Construct):
         fe_fleet = DorisFeFleet(
             self,
             "FeFleet",
-            subnet_id=self.public_subnet_id,
-            security_group_id=self.doris_security_groups.security_group_id,
+            vpc=self.vpc,
+            subnet=self.public_subnet,
+            security_group=self.doris_security_group,
             key_pair_name=self.key_pair_name,
             ami_id=self.ami_id,
             instance_type=self.fe_node_instance_type,
@@ -399,15 +397,15 @@ class DorisCluster(Construct):
         CfnOutput(self, "BastionEip", value=self.bastion_public_ip)
         CfnOutput(self, "BastionSecurityGroupId", value=self.bastion_security_group_id)
         CfnOutput(self, "DorisSecurityGroupId", value=self.doris_security_group_id)
-        CfnOutput(self, "FeMasterInstanceId", value=self.fe_master_instance.ref)
+        CfnOutput(self, "FeMasterInstanceId", value=self.fe_master_instance.instance_id)
         CfnOutput(self, "FeMasterPrivateIp", value=self.fe_master_private_ip)
 
         for idx, instance in enumerate(self.be_instances, start=1):
-            CfnOutput(self, f"BeInstance{idx}", value=instance.ref)
+            CfnOutput(self, f"BeInstance{idx}", value=instance.instance_id)
             CfnOutput(
                 self,
                 f"BeInstancePrivateIp{idx}",
-                value=instance.attr_private_ip,
+                value=instance.instance_private_ip or "0.0.0.0",
             )
 
     @property
@@ -424,10 +422,10 @@ class DorisCluster(Construct):
 
     @property
     def fe_master_private_ip(self) -> str:
-        return self.fe_master_instance.attr_private_ip
+        return self.fe_master_instance.instance_private_ip or "0.0.0.0"
 
     @property
-    def be_private_ip_addresses(self) -> List[str]:
+    def be_private_ip_addresses(self) -> list[str]:
         return self.be_private_ips[: self.be_node_count]
 
     @property

@@ -37,7 +37,7 @@ jobs:
         run: uv run pytest
 
       - name: Run CDK synth (integration test)
-        run: uv run cdk synth
+        run: cdk synth
 
       - name: Run linters
         run: |

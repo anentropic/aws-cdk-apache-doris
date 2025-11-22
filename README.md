@@ -36,11 +36,11 @@ Run integration test (CDK synth):
 uv run cdk synth
 ```
 
-Run linters:
+Run linters and formatters:
 
 ```bash
 uv run ruff check .
-uv run black --check .
+uv run ruff format --check .
 ```
 
 ### Git Flow

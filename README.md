@@ -6,12 +6,23 @@ AWS CDK (Python) Construct(s) for Apache Doris.
 
 This project uses [uv](https://docs.astral.sh/uv/) for dependency management and uses a git flow branching strategy.
 
+### Prerequisites
+
+- [uv](https://docs.astral.sh/uv/) - Python package manager
+- [Node.js](https://nodejs.org/) and npm - Required for AWS CDK CLI
+
 ### Setup
 
 Install uv if you haven't already:
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Install AWS CDK CLI globally (required for `cdk synth`):
+
+```bash
+npm install -g aws-cdk
 ```
 
 Clone the repository and install dependencies:
@@ -30,10 +41,10 @@ Run unit tests:
 uv run pytest
 ```
 
-Run integration test (CDK synth):
+Run integration test (CDK synth - requires CDK CLI installed globally):
 
 ```bash
-uv run cdk synth
+cdk synth
 ```
 
 Run linters and formatters:

@@ -41,7 +41,18 @@ Run linters and formatters:
 ```bash
 uv run ruff check .
 uv run ruff format --check .
+uv run basedpyright
 ```
+
+### Pre-commit Hooks
+
+This project uses [prek](https://prek.j178.dev/) for managing pre-commit hooks. Install the hooks:
+
+```bash
+uv run prek install
+```
+
+This will run ruff (check + format) and basedpyright automatically before each commit.
 
 ### Git Flow
 

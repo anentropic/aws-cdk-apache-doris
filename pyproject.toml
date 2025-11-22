@@ -72,3 +72,5 @@ exclude = [
     "**/.venv",
     "**/cdk.out",
 ]
+venvPath = "."
+venv = ".venv"
